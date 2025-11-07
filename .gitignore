@@ -11,4 +11,5 @@ wheels/
 test_data/
 
 data/
-
+*.db
+.env
