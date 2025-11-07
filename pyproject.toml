@@ -22,4 +22,5 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "requests>=2.32.5",
 ]

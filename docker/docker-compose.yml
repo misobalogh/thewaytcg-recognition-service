@@ -8,10 +8,12 @@ services:
       - "8000:8000"
     volumes:
       - ../cards.db:/app/cards.db
-      - ../src:/app/src
-      - ../run.py:/app/run.py
     environment:
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=sqlite:///./cards.db
+      - DEVICE=cpu
+      - MAX_IMAGE_DIM=1000
+      - TESSERACT_LANG=slk
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
