@@ -6,11 +6,15 @@ services:
     container_name: the-way-recognition
     ports:
       - "8000:8000"
+    volumes:
+      - ../cards.db:/app/cards.db
+      - ../src:/app/src
+      - ../run.py:/app/run.py
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

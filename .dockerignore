@@ -15,5 +15,13 @@ venv
 .vscode
 .idea
 *.md
-tests
 .pytest_cache
+tests
+prototypes
+test_data
+data/samples
+.python-version
+uv
+Makefile
+docker
+pyproject.toml
