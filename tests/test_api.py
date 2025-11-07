@@ -4,7 +4,7 @@ from pathlib import Path
 import io
 from PIL import Image
 
-API_URL = "http://127.0.0.1:8000/recognize-card"
+API_URL = "http://127.0.0.1:8000/api/v1/recognize-card"
 SAMPLES_DIR = Path("data/")
 TEST_IMAGE = "1.jpg"
 TIMEOUT = 30  # seconds
@@ -54,7 +54,7 @@ class TestRecognizeCardEndpoint:
         assert response.status_code == 200
         data = response.json()
 
-        assert set(data.keys()) == {"is_card", "card", "confidence_level"}
+        assert set(data.keys()) == {"is_card", "card", "confidence"}
 
         assert set(data["card"].keys()) == {
             "name",

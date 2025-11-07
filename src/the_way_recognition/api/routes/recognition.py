@@ -51,7 +51,7 @@ async def recognize_card(
         confidence=result.confidence,
         card={
             "name": result.card.name if result.card else None,
-            "text_match_score": round(result.text_score, 4),
-            "embedding_match_score": round(result.embedding_score, 4),
+            "text_match_score": float(f"{result.text_score:.4f}"),
+            "embedding_match_score": float(f"{result.embedding_score:.4f}"),
         }
     )
