@@ -1,5 +1,5 @@
 from src.models import Base
-from src.database import engine
+from src.the_way_recognition.database import engine
 
 def init_db():
     Base.metadata.create_all(bind=engine)

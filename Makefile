@@ -17,3 +17,4 @@ restart: down up
 clean:
 	docker compose -f docker/docker-compose.yml down -v
 	docker system prune -f
+

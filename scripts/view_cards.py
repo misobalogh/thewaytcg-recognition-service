@@ -1,5 +1,5 @@
 from src.models import Card
-from src.database import SessionLocal
+from src.the_way_recognition.database import SessionLocal
 
 def view_cards():
     with SessionLocal() as session:

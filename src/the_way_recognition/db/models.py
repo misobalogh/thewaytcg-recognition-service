@@ -1,7 +1,5 @@
 from sqlalchemy import Column, String, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
-
-Base = declarative_base()
+from src.the_way_recognition.db.database import Base
 
 class Card(Base):
     __tablename__ = 'cards'

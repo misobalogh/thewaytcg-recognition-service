@@ -5,6 +5,8 @@ pytesseract>=0.3.13
 python-multipart>=0.0.20
 uvicorn[standard]>=0.38.0
 sqlalchemy>=2.0.44
+pydantic_settings>=2.11.0
+setuptools<81.0.0
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.9.0+cpu

@@ -1,5 +1,5 @@
 from src.models import Card, Base
-from src.database import engine, SessionLocal
+from src.the_way_recognition.database import engine, SessionLocal
 import numpy as np
 import json
 from src.ocr_recognition.utils import card_json_to_text
