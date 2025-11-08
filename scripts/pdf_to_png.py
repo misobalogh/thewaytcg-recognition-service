@@ -5,7 +5,7 @@ import tqdm
 from pdf2image import convert_from_path
 
 PDF_DIR = Path(__file__).resolve().parent.parent / 'data' / 'pdf'
-PNG_DIR = Path(__file__).resolve().parent.parent / 'data' / 'png'
+PNG_DIR = Path(__file__).resolve().parent.parent / 'data' / 'gt' / 'png'
 
 PNG_DIR.mkdir(parents=True, exist_ok=True)
 
