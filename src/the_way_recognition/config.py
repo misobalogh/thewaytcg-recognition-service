@@ -1,40 +1,29 @@
-from pydantic_settings import BaseSettings
-# import torch
 from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    # Image processing
-    MAX_IMAGE_DIM: int = 1000
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
-    # Model settings
-    DEVICE: str = "cpu"
-    CLIP_MODEL: str = "ViT-B/32"
-
-    # OCR settings
-    TESSERACT_LANG: str = "slk"
-    TESSERACT_CONFIG: str = "--psm 6"
-
-    # Confidence thresholds
-    CONFIDENCE_HIGH: float = 0.75
-    CONFIDENCE_MEDIUM: float = 0.5
-    CONFIDENCE_LOW: float = 0.3
-
-    # Score weights
-    TEXT_WEIGHT: float = 0.4
-    EMBED_WEIGHT: float = 0.6
-    CONSENSUS_BOOST: float = 0.15   
-
-    # Database
-    DATABASE_URL: str = "sqlite:///./cards.db"
-
-    # API
+    REFERENCE_IMAGE_DIR: Path = PROJECT_ROOT / "data/gt/png"
+    CARD_METADATA_DIR: Path = PROJECT_ROOT / "data/json"
+    MAX_IMAGE_DIM: int = Field(default=900, ge=64)
+    OPENCV_THREADS: int = Field(default=1, ge=1)
+    SIFT_NFEATURES: int = Field(default=1200, ge=4)
+    SIFT_SHORTLIST_SIZE: int = Field(default=10, ge=2)
+    SIFT_GLOBAL_CHECKS: int = Field(default=96, ge=1)
+    SIFT_RATIO: float = Field(default=0.75, gt=0, lt=1)
+    SIFT_MIN_INLIERS: int = Field(default=12, ge=4)
+    SIFT_MIN_INLIER_RATIO: float = Field(default=0.45, gt=0, le=1)
+    SIFT_MIN_COVERAGE: float = Field(default=0.04, gt=0, le=1)
+    SIFT_MIN_MARGIN: float = Field(default=1.25, gt=1)
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "The Way Recognition Service"
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 @lru_cache()

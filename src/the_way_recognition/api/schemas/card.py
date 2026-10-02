@@ -1,25 +1,19 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
-from typing import Optional
+
 
 class CardMatch(BaseModel):
-    name: Optional[str] = None
-    text_match_score: float = Field(..., ge=0.0, le=1.0)
-    embedding_match_score: float = Field(..., ge=0.0, le=1.0)
+    id: str | None = None
+    name: str | None = None
+    sift_match_score: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    inliers: int = Field(default=0, ge=0)
+    inlier_ratio: float = Field(default=0.0, ge=0, le=1)
+    coverage: float = Field(default=0.0, ge=0, le=1)
+    match_margin: float | None = Field(default=None, ge=1, allow_inf_nan=False)
+
 
 class CardRecognitionResponse(BaseModel):
     is_card: bool
-    confidence: str = Field(..., pattern="^(high|medium|low|none)$")
+    confidence: Literal["high", "medium", "low", "none"]
     card: CardMatch
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "is_card": True,
-                "confidence": "high",
-                "card": {
-                    "name": "Example Card",
-                    "text_match_score": 0.87,
-                    "embedding_match_score": 0.92
-                }
-            }
-        }

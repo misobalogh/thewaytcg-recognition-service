@@ -7,16 +7,17 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../cards.db:/app/cards.db
+      - ../data/gt/png:/app/data/gt/png:ro
+      - ../data/json:/app/data/json:ro
     environment:
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=sqlite:///./cards.db
-      - DEVICE=cpu
-      - MAX_IMAGE_DIM=1000
-      - TESSERACT_LANG=slk
+      - REFERENCE_IMAGE_DIR=/app/data/gt/png
+      - CARD_METADATA_DIR=/app/data/json
+      - MAX_IMAGE_DIM=900
+      - OPENCV_THREADS=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

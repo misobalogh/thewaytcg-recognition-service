@@ -19,9 +19,9 @@ venv
 tests
 prototypes
 test_data
-data/samples
+data
+*.db
 .python-version
 uv
 Makefile
 docker
-pyproject.toml

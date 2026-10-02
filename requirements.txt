@@ -1,15 +1,7 @@
-# Core dependencies
-fastapi[standard]>=0.121.0
-levenshtein>=0.27.3
-pytesseract>=0.3.13
+# Runtime only. Notebook/PDF tooling is in pyproject.toml dependency groups.
+fastapi>=0.121.0
 python-multipart>=0.0.20
-uvicorn[standard]>=0.38.0
-sqlalchemy>=2.0.44
-pydantic_settings>=2.11.0
-setuptools<81.0.0
-
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.9.0+cpu
-torchvision==0.24.0
-
-git+https://github.com/openai/CLIP.git
+uvicorn>=0.38.0
+pydantic-settings>=2.11.0
+numpy>=2.3.4
+opencv-python-headless>=4.12.0,<6

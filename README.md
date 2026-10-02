@@ -1,210 +1,147 @@
 # The Way Recognition Service
 
-This project recognizes collectible card images and returns structured card data using OCR and image embeddings. You send a photo of a card, and the service tells you which card it is, how confident it is, and gives you match scores.
+CPU-only recognition of The Way cards using SIFT, FLANN candidate selection and
+RANSAC homography. No GPU, CLIP, OCR or database is required.
 
-## How it works
+Each worker loads the reference catalog once at startup. A photo is resized to
+900 pixels on its longest side, then SIFT features vote for ten candidates in a
+shared FLANN index. Those candidates are verified against their reference
+features using a ratio test and RANSAC. The best candidate must pass the minimum
+inlier, inlier ratio, coverage and geometry checks, and beat the runner-up by at
+least 1.25 times. Ambiguous images and images without enough features are rejected.
 
-You upload a card image to the API. The service runs OCR to extract text, then compares the text to a database of known cards using Levenshtein similarity. It also generates an image embedding using CLIP and compares it to stored embeddings. The service combines both scores to pick the best match and returns the result as JSON.
-
-### Service Architecture:
-
-```
-
-                +-------------------+
-                |   Client (User)   |
-                +--------+----------+
-                         |
-                         v
-                +-----------------------------+
-                |  FastAPI Server             |
-                |  (src/main.py)              |
-                +--------+--------------------+
-                         |
-                         v
-                +-----------------------------+
-                |  /api/v1/recognize-card     |
-                |  (Recognition Endpoint)     |
-                +--------+--------------------+
-                         |
-                         v
-                +-----------------------------+
-                |  Image Preprocessing        |
-                |  (utils/image.py)           |
-                +--------+--------------------+
-                         |
-                         v
-                +-----------------------------+
-                |  OCR Service                |
-                |  (core/ocr.py)              |
-                +--------+--------------------+
-                         |
-                         v
-                +-----------------------------+
-                |  Card Matcher               |
-                |  (core/matching.py)         |
-                +--------+--------------------+
-                         |
-                         v
-                +-----------------------------+
-                |  Database (SQLite)          |
-                |  (db/database.py, models.py)|
-                +-----------------------------+
-                         ^
-                         |
-                +--------+--------------------+
-                |  Embedding Service          |
-                |  (core/embeddings.py, CLIP) |
-                +-----------------------------+
-```
-
-Data flow:
-1. User uploads card image.
-2. API preprocesses image.
-3. OCR extracts text.
-4. Card matcher compares OCR text and image embedding to database.
-5. Service returns best match and scores.
-
-## Quick Start
-
-### 1. Install dependencies
+## Setup
 
 ```bash
-git clone https://github.com/misobalogh/thewayccg-recognition-service
-cd thewayccg-recognition-service
 uv sync
 ```
 
-You can use [uv](https://docs.astral.sh/uv/) for dependency management. If you prefer Python only, run:
-
-```bash
-pip install -r requirements.txt
-```
-
-Set up a virtual environment if you want isolation:
-
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-### 2. Prepare data
-
-1. Export your card data from Excel to CSV.
-2. Save the CSV file as `data/cards.csv`.
-
-Generate JSON schemas for each card:
+Card metadata goes in `data/json/<id>.json`, with at least a nonempty `name`.
+Reference images go in `data/gt/png/<id>.png`. Their IDs must match exactly; an
+incomplete catalog fails startup with an actionable error. The existing
+`data/cards.csv` can generate the metadata:
 
 ```bash
 uv run -m scripts.csv_to_json_schema
 ```
 
-This creates JSON files for each card in `data/gt/json/` as `1.json`, `2.json`, and so on.
-
-Download all card images as PDFs into `data/pdf/` (name them `1.pdf`, `2.pdf`, etc).
-
-Convert PDFs to PNG images:
+For the existing two ZIP archives of numbered PDF cards, place them in `data/`
+and render the reference images:
 
 ```bash
-uv run -m scripts.pdf_to_png
+uv run -m scripts.prepare_references
 ```
 
-This saves PNGs to `data/gt/png/`.
+The same command also supports numbered PDFs in `data/pdf/`. It renders one-page
+PDFs at a maximum dimension of 1400 pixels and rejects duplicate/missing IDs.
+It overwrites generated PNGs when rerun. Keep the PDFs/ZIPs for rebuilding; keep
+the PNGs available to the service. Data is local and excluded from Git.
 
-Generate image embeddings:
+Start the service:
 
 ```bash
-uv run -m scripts.get_embeddings
+uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
-This creates `.npy` embedding files in `data/gt/npy/`.
+For development with reload, `uv run run.py` remains available. Configuration is
+read from `.env`; see `.env.example`. Defaults match the fast notebook: 1200
+features, ten candidates, one OpenCV thread. The service serializes recognition
+within each worker because the SIFT/matcher objects are shared. CPU work runs in
+a thread pool so health checks and other async routes remain responsive. Extra
+workers each build their own index and consume their own memory. Restart after
+changing reference data.
 
-You can now delete the PDFs and PNGs if you want to save space.
+## API
 
-### 3. Insert data into the database
-
-Load all card data and embeddings into the database:
+- `POST /api/v1/recognize-card` — multipart upload named `file`.
+- `GET /health` — available once startup has completed.
+- `/docs` — Swagger UI.
 
 ```bash
-uv run -m scripts.insert_cards
+curl -F file=@tests/test_data/patrik.jpg http://localhost:8000/api/v1/recognize-card
 ```
 
-Check the database contents:
-
-```bash
-uv run -m scripts.view_cards
-```
-
-### 4. Run the service
-
-Start the API server:
-
-```bash
-uv run run.py
-```
-
-The API is now available at `http://localhost:8000`.
-
-## Docker
-
-You can run the service in Docker if you prefer.
-
-Build the Docker image:
-
-```bash
-make build
-```
-
-Start the container:
-
-```bash
-make up
-```
-
-The service will be available at `http://localhost:8000`.
-
-Show logs:
-
-```bash
-make logs
-```
-
-Stop the container:
-
-```bash
-make down
-```
-
-Other commands:
-
-```bash
-make clean   # Remove image and volumes
-make restart # Restart the container
-```
-
-## API Documentation
-
-Swagger docs are available at `http://localhost:8000/docs` when the service is running.
-
-### Endpoints
-
-```
-/api/v1/recognize-card/  # Accepts a card image (multipart/form-data), returns JSON with recognition result
-/docs                    # Swagger documentation
-/health                  # Health check
-```
-
-### Example response
+Example accepted response (values are illustrative):
 
 ```json
 {
-  "card": {
-    "embedding_match_score": 0.92,
-    "name": "Example Card",
-    "text_match_score": 0.87
-  },
+  "is_card": true,
   "confidence": "high",
-  "is_card": true
+  "card": {
+    "id": "32",
+    "name": "PATRIK",
+    "sift_match_score": 45.0,
+    "inliers": 80,
+    "inlier_ratio": 0.75,
+    "coverage": 0.5625,
+    "match_margin": 3.4
+  }
 }
 ```
 
-You get the best match, match scores, and a confidence level for each request.
+`is_card` means an accepted match to the known catalog, not a general detector of
+all cards. Rejected images return `is_card: false`, `confidence: "none"`, and null
+`id`/`name`. Diagnostic metrics may describe the rejected best candidate.
+
+`sift_match_score = inliers × inlier_ratio × sqrt(coverage)` is a ranking score,
+not a probability or a value limited to 0–1. Coverage is the area spanned by the
+inlier reference points divided by reference image area. `match_margin` is the
+best valid score divided by the runner-up valid score; null means there is no
+positive runner-up score. Confidence labels are heuristics: `high` requires at
+least 30 inliers, inlier ratio at least 0.6, and a margin of at least 2 (or no
+positive runner-up); `medium` requires the strong margin; other accepted matches
+are `low`. These labels are not calibrated on a large dataset.
+
+**API change from the OCR/CLIP implementation:** `card.text_match_score` and
+`card.embedding_match_score` are removed. Use the SIFT diagnostic fields above.
+The endpoint, `is_card`, `confidence` and `card.name` remain. Clients displaying or
+validating the old score fields must update when adopting this branch.
+
+Bad, empty or corrupt uploads return HTTP 400; a missing `file` returns 422. An
+unavailable index returns 503. Old OCR/CLIP `.env` keys are ignored.
+
+## Docker
+
+Prepare the PNGs and JSON metadata on the host first, then:
+
+```bash
+make build
+make up
+```
+
+Compose mounts both directories read-only. The image contains only the runtime
+code and dependencies, with headless OpenCV, no GPU libraries or Tesseract. The
+healthcheck uses Python's standard library. For custom data paths, update the
+Compose mounts and corresponding environment variables.
+
+## Verification and experiments
+
+```bash
+uv run pytest -q
+```
+
+Tests use an in-process FastAPI client. Synthetic fixtures cover uploads,
+rotation, rejection, ambiguous candidates, catalog validation and concurrent
+requests. The real-photo regression tests additionally check the independently
+labeled 18 local photos against the full catalog. Missing local assets are
+reported as skips; synthetic tests do not need those assets.
+
+Notebook dependencies are separate from runtime:
+
+```bash
+uv sync --group notebooks
+```
+
+Open `prototypes/sift_fast_experiment.ipynb` in VS Code and use the local Jupyter
+kernel. The original `sift_experiment.ipynb` is the full-catalog baseline. The fast
+experiment selects ten candidates, benchmarks both variants, and visualizes all
+photos in `tests/test_data`. Add labels via `data/sift_queries.csv` with columns
+`path,expected_id`; paths are relative to the project, empty IDs are negatives.
+
+The initial eight real photos achieved 8/8 accepted correct matches, with median
+latency around 0.55 seconds on one CPU thread, versus 1.75 seconds for full-catalog
+verification. A further ten photos were visually checked successfully in the
+notebook. This small set does not establish general accuracy; test more glare,
+blur, distant cards, similar editions and real negative images before deployment.
+The old `cards.db` and historical notebooks may remain locally; the running
+service does not read the database or use embedding files.

@@ -1,29 +1,10 @@
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from src.the_way_recognition.db.database import get_db
-from src.the_way_recognition.db.repositories.card_repository import CardRepository
-from src.the_way_recognition.core.ocr import OCRService
-from src.the_way_recognition.core.embeddings import EmbeddingService
-from src.the_way_recognition.core.matching import CardMatcher
-from functools import lru_cache
+from fastapi import HTTPException, Request
+
+from src.the_way_recognition.core.sift import SIFTRecognitionService
 
 
-# Singleton services
-@lru_cache()
-def get_ocr_service() -> OCRService:
-    return OCRService()
-
-
-@lru_cache()
-def get_embedding_service() -> EmbeddingService:
-    return EmbeddingService()
-
-
-def get_card_repository(db: Session = Depends(get_db)) -> CardRepository:
-    return CardRepository(db)
-
-
-def get_card_matcher(
-    embedding_service: EmbeddingService = Depends(get_embedding_service),
-) -> CardMatcher:
-    return CardMatcher(embedding_service)
+def get_recognition_service(request: Request) -> SIFTRecognitionService:
+    service = getattr(request.app.state, "recognition_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="Recognition index is not ready")
+    return service
