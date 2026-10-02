@@ -1,67 +1,88 @@
 # The Way Recognition Service
 
-CPU-only recognition of The Way cards using SIFT, FLANN candidate selection and
-RANSAC homography. No GPU, CLIP, OCR or database is required.
+Recognizes The Way cards from photos and returns the card ID, name and match
+metrics. Recognition uses SIFT features, FLANN candidate selection and RANSAC
+geometric verification.
 
-Each worker loads the reference catalog once at startup. A photo is resized to
-900 pixels on its longest side, then SIFT features vote for ten candidates in a
-shared FLANN index. Those candidates are verified against their reference
-features using a ratio test and RANSAC. The best candidate must pass the minimum
-inlier, inlier ratio, coverage and geometry checks, and beat the runner-up by at
-least 1.25 times. Ambiguous images and images without enough features are rejected.
+## Required data
 
-## Setup
+Copy the reference images and card metadata to the server before starting the
+service. These files are not included in the repository or Docker image.
 
-```bash
-uv sync
+```text
+data/
+├── gt/png/
+│   ├── 1.png
+│   ├── 2.png
+│   └── ...
+└── json/
+    ├── 1.json
+    ├── 2.json
+    └── ...
 ```
 
-Card metadata goes in `data/json/<id>.json`, with at least a nonempty `name`.
-Reference images go in `data/gt/png/<id>.png`. Their IDs must match exactly; an
-incomplete catalog fails startup with an actionable error. The existing
-`data/cards.csv` can generate the metadata:
+Each card needs a reference image and a JSON file with the same ID. For example,
+`data/gt/png/41.png` pairs with `data/json/41.json`:
 
-```bash
-uv run -m scripts.csv_to_json_schema
+```json
+{
+  "name": "ATANAZ ALEXANDRIJSKY"
+}
 ```
 
-For the existing two ZIP archives of numbered PDF cards, place them in `data/`
-and render the reference images:
+The JSON must contain a nonempty `name`; additional fields are allowed.
+The service validates the catalog and builds its search index at startup.
+Missing or invalid references prevent startup. Restart after changing the data.
+
+## Run with Docker
+
+Place the data in the directories above, then run from the project root:
 
 ```bash
-uv run -m scripts.prepare_references
+make build
+make up
 ```
 
-The same command also supports numbered PDFs in `data/pdf/`. It renders one-page
-PDFs at a maximum dimension of 1400 pixels and rejects duplicate/missing IDs.
-It overwrites generated PNGs when rerun. Keep the PDFs/ZIPs for rebuilding; keep
-the PNGs available to the service. Data is local and excluded from Git.
-
-Start the service:
+The service is available at `http://localhost:8000`. Docker Compose mounts both
+data directories read-only. To use different directories, update the volume
+mounts and data paths in `docker/docker-compose.yml`.
 
 ```bash
-uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+make logs   # View logs
+make down   # Stop the service
 ```
 
-For development with reload, `uv run run.py` remains available. Configuration is
-read from `.env`; see `.env.example`. Defaults match the fast notebook: 1200
-features, ten candidates, one OpenCV thread. The service serializes recognition
-within each worker because the SIFT/matcher objects are shared. CPU work runs in
-a thread pool so health checks and other async routes remain responsive. Extra
-workers each build their own index and consume their own memory. Restart after
-changing reference data.
+## Run locally
+
+Install dependencies with [uv](https://docs.astral.sh/uv/), then start the service:
+
+```bash
+uv sync --no-dev
+uv run --no-dev uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+For development with automatic reload:
+
+```bash
+uv run run.py
+```
 
 ## API
 
-- `POST /api/v1/recognize-card` — multipart upload named `file`.
-- `GET /health` — available once startup has completed.
-- `/docs` — Swagger UI.
+Interactive API documentation: `http://localhost:8000/docs`.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/recognize-card` | Recognize a photo uploaded as multipart field `file` |
+| `GET /health` | Check that the service is running |
+
+Upload a photo:
 
 ```bash
-curl -F file=@tests/test_data/patrik.jpg http://localhost:8000/api/v1/recognize-card
+curl -F "file=@/path/to/card.jpg" http://localhost:8000/api/v1/recognize-card
 ```
 
-Example accepted response (values are illustrative):
+Example response:
 
 ```json
 {
@@ -79,69 +100,45 @@ Example accepted response (values are illustrative):
 }
 ```
 
-`is_card` means an accepted match to the known catalog, not a general detector of
-all cards. Rejected images return `is_card: false`, `confidence: "none"`, and null
-`id`/`name`. Diagnostic metrics may describe the rejected best candidate.
+| Field | Meaning |
+| --- | --- |
+| `is_card` | A match to a card in the reference catalog was accepted |
+| `confidence` | Match strength: `high`, `medium`, `low` or `none`; not a probability |
+| `card.id`, `card.name` | ID and name of the accepted card |
+| `card.sift_match_score` | Ranking score: `inliers × inlier_ratio × sqrt(coverage)` |
+| `card.inliers` | Number of geometrically verified feature matches |
+| `card.inlier_ratio` | Fraction of candidate feature matches that passed geometric verification |
+| `card.coverage` | Fraction of the reference image area spanned by verified points |
+| `card.match_margin` | Best valid score divided by the runner-up score; null when there is no positive runner-up score |
 
-`sift_match_score = inliers × inlier_ratio × sqrt(coverage)` is a ranking score,
-not a probability or a value limited to 0–1. Coverage is the area spanned by the
-inlier reference points divided by reference image area. `match_margin` is the
-best valid score divided by the runner-up valid score; null means there is no
-positive runner-up score. Confidence labels are heuristics: `high` requires at
-least 30 inliers, inlier ratio at least 0.6, and a margin of at least 2 (or no
-positive runner-up); `medium` requires the strong margin; other accepted matches
-are `low`. These labels are not calibrated on a large dataset.
+Unrecognized or ambiguous photos return `is_card: false`, `confidence: "none"`
+and null `card.id`/`card.name`. Match metrics may describe the rejected candidate.
+Empty, invalid or corrupt uploads return HTTP 400; a missing `file` returns 422.
+An unavailable recognition index returns 503.
 
-**API change from the OCR/CLIP implementation:** `card.text_match_score` and
-`card.embedding_match_score` are removed. Use the SIFT diagnostic fields above.
-The endpoint, `is_card`, `confidence` and `card.name` remain. Clients displaying or
-validating the old score fields must update when adopting this branch.
+## Configuration
 
-Bad, empty or corrupt uploads return HTTP 400; a missing `file` returns 422. An
-unavailable index returns 503. Old OCR/CLIP `.env` keys are ignored.
+For local execution, configuration is read from environment variables or `.env`.
+See [.env.example](.env.example) for all settings. For Docker, set environment
+variables in `docker/docker-compose.yml`.
 
-## Docker
+| Setting | Default |
+| --- | --- |
+| `REFERENCE_IMAGE_DIR` | `data/gt/png` under the project root |
+| `CARD_METADATA_DIR` | `data/json` under the project root |
+| `MAX_IMAGE_DIM` | `900` |
+| `SIFT_NFEATURES` | `1200` |
+| `SIFT_SHORTLIST_SIZE` | `10` |
+| `SIFT_MIN_INLIERS` | `12` |
+| `SIFT_MIN_INLIER_RATIO` | `0.45` |
+| `SIFT_MIN_COVERAGE` | `0.04` |
+| `SIFT_MIN_MARGIN` | `1.25` |
 
-Prepare the PNGs and JSON metadata on the host first, then:
-
-```bash
-make build
-make up
-```
-
-Compose mounts both directories read-only. The image contains only the runtime
-code and dependencies, with headless OpenCV, no GPU libraries or Tesseract. The
-healthcheck uses Python's standard library. For custom data paths, update the
-Compose mounts and corresponding environment variables.
-
-## Verification and experiments
+## Tests
 
 ```bash
 uv run pytest -q
 ```
 
-Tests use an in-process FastAPI client. Synthetic fixtures cover uploads,
-rotation, rejection, ambiguous candidates, catalog validation and concurrent
-requests. The real-photo regression tests additionally check the independently
-labeled 18 local photos against the full catalog. Missing local assets are
-reported as skips; synthetic tests do not need those assets.
-
-Notebook dependencies are separate from runtime:
-
-```bash
-uv sync --group notebooks
-```
-
-Open `prototypes/sift_fast_experiment.ipynb` in VS Code and use the local Jupyter
-kernel. The original `sift_experiment.ipynb` is the full-catalog baseline. The fast
-experiment selects ten candidates, benchmarks both variants, and visualizes all
-photos in `tests/test_data`. Add labels via `data/sift_queries.csv` with columns
-`path,expected_id`; paths are relative to the project, empty IDs are negatives.
-
-The initial eight real photos achieved 8/8 accepted correct matches, with median
-latency around 0.55 seconds on one CPU thread, versus 1.75 seconds for full-catalog
-verification. A further ten photos were visually checked successfully in the
-notebook. This small set does not establish general accuracy; test more glare,
-blur, distant cards, similar editions and real negative images before deployment.
-The old `cards.db` and historical notebooks may remain locally; the running
-service does not read the database or use embedding files.
+Synthetic tests run without reference data. Real-photo tests run when their
+reference catalog and test photos are available; otherwise they are skipped.

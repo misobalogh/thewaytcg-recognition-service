@@ -1,7 +1,7 @@
 [project]
 name = "the-way-recognition-service"
 version = "0.2.0"
-description = "CPU-only SIFT recognition microservice for The Way card game scanner"
+description = "SIFT recognition microservice for The Way card game scanner"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
